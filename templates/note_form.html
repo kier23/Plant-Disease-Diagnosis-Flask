@@ -1,0 +1,24 @@
+{% extends "import.html" %}
+{% block content %}
+<div class="container mt-5">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <a href="{{ url_for('index') }}" class="btn btn-outline-secondary">🏠 Back to Home</a>
+        <h2 class="text-primary">
+            {% if note %}✏️ Edit Note{% else %}➕ Add Note{% endif %}
+        </h2>
+        <a href="{{ url_for('notes.notes_list') }}" class="btn btn-secondary">📋 View All Notes</a>
+    </div>
+
+    <form method="post">
+        <div class="mb-3">
+            <label for="content" class="form-label">📝 Note Content</label>
+            <textarea class="form-control" id="content" name="content" rows="4" required>{{ note.content if note else '' }}</textarea>
+        </div>
+        <div class="mb-3">
+            <label for="diagnosis_id" class="form-label">🩺 Diagnosis ID</label>
+            <input type="number" class="form-control" id="diagnosis_id" name="diagnosis_id" value="{{ note.diagnosis_id if note else '' }}" required>
+        </div>
+        <button type="submit" class="btn btn-primary">💾 Save</button>
+    </form>
+</div>
+{% endblock %}
