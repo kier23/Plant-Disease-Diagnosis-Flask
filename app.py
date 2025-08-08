@@ -4,16 +4,27 @@ import numpy as np
 from tensorflow import keras
 from skimage import io
 from tensorflow.keras.preprocessing import image
+from extensions import db 
+
 
 
 # Flask utils
 from flask import Flask, redirect, url_for, request, render_template
 from werkzeug.utils import secure_filename
 from gevent.pywsgi import WSGIServer
+from flasgger import Swagger
 
 # Define a flask app
 app = Flask(__name__)
+swagger = Swagger(app)
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///diagnosis.db'
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+db.init_app(app)
+from routes.notes import notes_bp
 
+app.register_blueprint(notes_bp)
+with app.app_context():
+    db.create_all()
 # Model saved with Keras model.save()
 
 # You can also use pretrained model from Keras
@@ -77,3 +88,5 @@ if __name__ == '__main__':
     http_server = WSGIServer(('', 5000), app)
     http_server.serve_forever()
     app.run()
+    
+
