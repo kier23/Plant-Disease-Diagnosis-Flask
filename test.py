@@ -1,118 +1,99 @@
 import unittest
-import io
+import json
 import os
-from unittest.mock import patch, MagicMock
-from app import app, db
-from models.note import Note
+from flask import Flask
+from prediction import predictions_api, PREDICTIONS_FILE
 
-class AppTestCase(unittest.TestCase):
+class TestPredictionsAPI(unittest.TestCase):
+
     def setUp(self):
-        app.config['TESTING'] = True
-        app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///:memory:'
+        self.backup_file = None
+        if os.path.exists(PREDICTIONS_FILE):
+            self.backup_file = PREDICTIONS_FILE + ".bak"
+            os.rename(PREDICTIONS_FILE, self.backup_file)
+
+        with open(PREDICTIONS_FILE, "w") as f:
+            json.dump([], f)
+
+        app = Flask(__name__)
+        app.register_blueprint(predictions_api)
+        app.testing = True
         self.client = app.test_client()
-        with app.app_context():
-            db.create_all()
 
     def tearDown(self):
-        with app.app_context():
-            db.session.remove()
-            db.drop_all()
-
-    # --- App routes coverage ---
-
-    def test_index_route(self):
-        response = self.client.get('/')
-        self.assertEqual(response.status_code, 200)
-        self.assertIn(b'html', response.data.lower())  # check html page loads
-
-    @patch('app.model_predict')
-    def test_predict_post_route(self, mock_predict):
-        mock_predict.return_value = [[0.1] * 14 + [1.0]]  # force last index
-        data = {
-            'file': (io.BytesIO(b"fake image data"), 'test.jpg')
-        }
-
-        uploads_dir = os.path.join(os.path.dirname(__file__), 'uploads')
-        os.makedirs(uploads_dir, exist_ok=True)
-
-        response = self.client.post('/predict', data=data, content_type='multipart/form-data')
-        self.assertEqual(response.status_code, 200)
-        self.assertIn(b'Tomato_healthy', response.data)  
-
-    def test_predict_get_route(self):
-        response = self.client.get('/predict')
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.data, b'null')
+        """Clean up test file and restore original."""
+        if os.path.exists(PREDICTIONS_FILE):
+            os.remove(PREDICTIONS_FILE)
+        if self.backup_file:
+            os.rename(self.backup_file, PREDICTIONS_FILE)
 
 
-    def test_create_note_success(self):
-        response = self.client.post('/api/notes/', json={
-            'content': 'Leaf spot detected on lower leaves.',
-            'diagnosis_id': 1
-        })
-        self.assertEqual(response.status_code, 201)
+    def test_create_prediction_positive(self):
+        payload = {"filename": "leaf.jpg", "prediction": "Tomato_healthy"}
+        res = self.client.post("/predictions", json=payload)
+        self.assertEqual(res.status_code, 201)
+        data = res.get_json()
+        self.assertEqual(data["filename"], "leaf.jpg")
+        self.assertEqual(data["prediction"], "Tomato_healthy")
+        self.assertIn("timestamp", data)
+        self.assertIn("id", data)
 
-    def test_create_note_missing_fields(self):
-        response = self.client.post('/api/notes/', json={})
-        self.assertEqual(response.status_code, 400)
+    def test_create_prediction_negative_missing_fields(self):
+        res = self.client.post("/predictions", json={"filename": "leaf.jpg"})
+        self.assertEqual(res.status_code, 400)
+        self.assertIn("error", res.get_json())
 
-    def test_get_note_success(self):
-        with app.app_context():
-            note = Note(content="Test note", diagnosis_id=1)
-            db.session.add(note)
-            db.session.commit()
-            note_id = note.id
+    def test_get_all_predictions_positive(self):
+        self.client.post("/predictions", json={"filename": "leaf.jpg", "prediction": "Tomato_healthy"})
+        res = self.client.get("/predictions")
+        self.assertEqual(res.status_code, 200)
+        data = res.get_json()
+        self.assertIsInstance(data, list)
+        self.assertGreater(len(data), 0)
 
-        response = self.client.get(f'/api/notes/{note_id}')
-        self.assertEqual(response.status_code, 200)
+    def test_get_all_predictions_negative_empty_list(self):
+        res = self.client.get("/predictions")
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.get_json(), [])
 
-    def test_get_note_not_found(self):
-        response = self.client.get('/api/notes/999')
-        self.assertEqual(response.status_code, 404)
 
-    def test_update_note_success(self):
-        with app.app_context():
-            note = Note(content="Old note", diagnosis_id=1)
-            db.session.add(note)
-            db.session.commit()
-            note_id = note.id
+    def test_get_single_prediction_positive(self):
+        self.client.post("/predictions", json={"filename": "leaf.jpg", "prediction": "Tomato_healthy"})
+        res = self.client.get("/predictions/1")
+        self.assertEqual(res.status_code, 200)
+        data = res.get_json()
+        self.assertEqual(data["id"], 1)
 
-        response = self.client.put(f'/api/notes/{note_id}', json={
-            'content': 'Updated note',
-            'diagnosis_id': 1
-        })
-        self.assertEqual(response.status_code, 200)
+    def test_get_single_prediction_negative_not_found(self):
+        res = self.client.get("/predictions/999")
+        self.assertEqual(res.status_code, 404)
+        self.assertIn("error", res.get_json())
 
-    def test_update_note_not_found(self):
-        response = self.client.put('/api/notes/999', json={
-            'content': 'Updated note',
-            'diagnosis_id': 1
-        })
-        self.assertEqual(response.status_code, 404)
 
-    def test_update_note_missing_description(self):
-        with app.app_context():
-            note = Note(content="Old", diagnosis_id=1)
-            db.session.add(note)
-            db.session.commit()
-            note_id = note.id
+    def test_update_prediction_positive(self):
+        self.client.post("/predictions", json={"filename": "leaf.jpg", "prediction": "Tomato_healthy"})
+        res = self.client.put("/predictions/1", json={"prediction": "Potato___Early_blight"})
+        self.assertEqual(res.status_code, 200)
+        data = res.get_json()
+        self.assertEqual(data["prediction"], "Potato___Early_blight")
 
-        response = self.client.put(f'/api/notes/{note_id}', json={})
-        self.assertEqual(response.status_code, 400)
+    def test_update_prediction_negative_not_found(self):
+        res = self.client.put("/predictions/999", json={"prediction": "None"})
+        self.assertEqual(res.status_code, 404)
+        self.assertIn("error", res.get_json())
 
-    def test_delete_note_success(self):
-        with app.app_context():
-            note = Note(content="Delete me", diagnosis_id=1)
-            db.session.add(note)
-            db.session.commit()
-            note_id = note.id
 
-        response = self.client.delete(f'/api/notes/{note_id}')
-        self.assertEqual(response.status_code, 200)
+    def test_delete_prediction_positive(self):
+        self.client.post("/predictions", json={"filename": "leaf.jpg", "prediction": "Tomato_healthy"})
+        res = self.client.delete("/predictions/1")
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.get_json()["message"], "Prediction deleted")
 
-    def test_delete_note_not_found(self):
-        response = self.client.delete('/api/notes/999')
-        self.assertEqual(response.status_code, 404)
+    def test_delete_prediction_negative_not_found(self):
+        res = self.client.delete("/predictions/999")
+        self.assertEqual(res.status_code, 404)
+        self.assertIn("error", res.get_json())
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     unittest.main()

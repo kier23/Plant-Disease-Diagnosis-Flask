@@ -1,0 +1,26 @@
+[
+    {
+        "id": 1,
+        "filename": "image_2025-08-08_193009979.png",
+        "prediction": "Pepper__bell___healthy",
+        "timestamp": "2025-08-08T22:00:10.054285"
+    },
+    {
+        "id": 2,
+        "filename": "image_2025-08-08_193026950.png",
+        "prediction": "Tomato_Septoria_leaf_spot",
+        "timestamp": "2025-08-08T22:02:02.540176"
+    },
+    {
+        "id": 3,
+        "filename": "0d9dbf50-53a9-42b2-8b29-0360fb7dbd98___RS_Early.B_6692.JPG",
+        "prediction": "Potato___Early_blight",
+        "timestamp": "2025-08-08T22:23:47.916913"
+    },
+    {
+        "id": 4,
+        "filename": "Egg_Plant.jpg",
+        "prediction": "Egg_plant_leaf_spots",
+        "timestamp": "2025-08-08T22:27:23.709976"
+    }
+]
